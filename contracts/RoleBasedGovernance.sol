@@ -5,6 +5,7 @@ pragma solidity ^0.8.0;
 import "./IAutID.sol";
 
 contract RoleBasedGovernance {
+    //Proposal data needed for voting
     struct Proposal {
         string metadataCID;
         uint256 startTime;
@@ -13,6 +14,7 @@ contract RoleBasedGovernance {
         uint256 noVotes;
     }
 
+    //Mapping types
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(address => bool)) public proposalVotes;
     mapping(uint256 => mapping(uint256 => uint256)) public proposalRoleWeights;
@@ -24,6 +26,7 @@ contract RoleBasedGovernance {
     IAutID private autID;
     address private daoExpander;
 
+    //confirm only members of daoexpander with certain role
     modifier onlyMemberWithRole(uint256 role) {
         // Retrieve the caller's AutID from the AutID contract
         uint256 autIDTokenId = autID.getAutIDByOwner(msg.sender);
@@ -40,21 +43,26 @@ contract RoleBasedGovernance {
         _;
     }
 
+    //emit events to track proposal creation and voting
     event ProposalCreated(uint256 proposalId, string metadataCID, uint256 startTime, uint256 endTime);
     event VoteCast(uint256 proposalId, address voter, bool vote);
 
+    //initialize the contract with the autid contract address and the daoexpander address
     constructor(address autIDContract, address daoExpanderAddress) {
+        //weights for votes of each role
         uint8[3] memory roleWeights = [10, 21, 18];
 
         // Initialize the AutID interface with the deployed contract address
         autID = IAutID(autIDContract);
         daoExpander = daoExpanderAddress;
 
+        //set the role weights for the proposal
         for (uint256 i = 0; i < roleWeights.length; i++) {
             proposalRoleWeights[0][i] = roleWeights[i];
         }
     }
 
+    //create a proposal with the metadata cid, start time and end time
     function createProposal(
         string memory metadataCID,
         uint256 startTime,
@@ -76,6 +84,7 @@ contract RoleBasedGovernance {
         emit ProposalCreated(proposalId, metadataCID, startTime, endTime);
     }
 
+    // cast a vote for a proposal, confirm only votes within specified time frame are counted
     function vote(uint256 proposalId, bool voteValue) external onlyMemberWithRole(2) {
         Proposal storage proposal = proposals[proposalId];
 
@@ -91,13 +100,15 @@ contract RoleBasedGovernance {
             proposal.noVotes += proposalRoleWeights[0][memberRoles[msg.sender]];
         }
 
+        //emit event to track vote
         emit VoteCast(proposalId, msg.sender, voteValue);
     }
 
     function setMemberRole(address member, uint256 role) external onlyMemberWithRole(1) {
         memberRoles[member] = role;
     }
-
+    
+    //get proposal data for the specified proposal id
     function getProposal(uint256 proposalId)
         external
         view
@@ -120,6 +131,7 @@ contract RoleBasedGovernance {
         );
     }
 
+    // get all active proposal ids
     function getActiveProposalIDs() external view returns (uint256[] memory activeProposalIds) {
         uint256[] memory proposalIds = new uint256[](proposalCount);
         uint256 activeCount = 0;
