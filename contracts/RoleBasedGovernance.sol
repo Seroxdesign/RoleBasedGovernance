@@ -14,11 +14,11 @@ contract RoleBasedGovernance {
     }
 
     mapping(uint256 => Proposal) public proposals;
-    uint256 public proposalCount;
-
     mapping(uint256 => mapping(address => bool)) public proposalVotes;
     mapping(uint256 => mapping(uint256 => uint256)) public proposalRoleWeights;
     mapping(address => uint256) public memberRoles;
+
+    uint256 public proposalCount;
 
     // Add the AutID interface reference
     IAutID private autID;
@@ -43,24 +43,23 @@ contract RoleBasedGovernance {
     event ProposalCreated(uint256 proposalId, string metadataCID, uint256 startTime, uint256 endTime);
     event VoteCast(uint256 proposalId, address voter, bool vote);
 
-    constructor(uint256[] memory roles, uint256[] memory weights, address daoExpanderAddress) {
-        require(roles.length == weights.length, "RoleBasedGovernance: Invalid input");
+    constructor(address autIDContract, address daoExpanderAddress) {
+        uint8[3] memory roleWeights = [10, 21, 18];
 
-        for (uint256 i = 0; i < roles.length; i++) {
-            proposalRoleWeights[0][roles[i]] = weights[i];
-        }
-
-        address autIDContract = 0xb6868B3920712729A24689Cb5c770639d0C56aDd;
         // Initialize the AutID interface with the deployed contract address
         autID = IAutID(autIDContract);
         daoExpander = daoExpanderAddress;
+
+        for (uint256 i = 0; i < roleWeights.length; i++) {
+            proposalRoleWeights[0][i] = roleWeights[i];
+        }
     }
 
-   function createProposal(
+    function createProposal(
         string memory metadataCID,
         uint256 startTime,
         uint256 endTime
-    ) external onlyMemberWithRole(1) { // Provide the required arguments
+    ) external onlyMemberWithRole(1) {
         require(startTime < endTime, "RoleBasedGovernance: Invalid proposal duration");
 
         uint256 proposalId = proposalCount + 1;
@@ -87,11 +86,9 @@ contract RoleBasedGovernance {
         proposalVotes[proposalId][msg.sender] = true;
 
         if (voteValue) {
-            //proposal.yesVotes += proposalRoleWeights[proposalId][memberRoles[msg.sender]];
-            proposal.yesVotes += 1;
+            proposal.yesVotes += proposalRoleWeights[0][memberRoles[msg.sender]];
         } else {
-            //proposal.noVotes += proposalRoleWeights[proposalId][memberRoles[msg.sender]];
-               proposal.noVotes += 1;
+            proposal.noVotes += proposalRoleWeights[0][memberRoles[msg.sender]];
         }
 
         emit VoteCast(proposalId, msg.sender, voteValue);
