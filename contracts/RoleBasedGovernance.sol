@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-// Import the AutID interface
 import "./IAutID.sol";
+//import "./INova.sol";
 
-contract RoleBasedGovernance {
+contract Voting {
     //Proposal data needed for voting
     struct Proposal {
         string metadataCID;
@@ -18,26 +18,25 @@ contract RoleBasedGovernance {
     mapping(uint256 => Proposal) public proposals;
     mapping(uint256 => mapping(address => bool)) public proposalVotes;
     mapping(uint256 => mapping(uint256 => uint256)) public proposalRoleWeights;
-    mapping(address => uint256) public memberRoles;
 
     uint256 public proposalCount;
 
     // Add the AutID interface reference
     IAutID private autID;
-    address private daoExpander;
+    INova private nova;
 
-    //confirm only members of daoexpander with certain role
+    //confirm only members of nova with certain role
     modifier onlyMemberWithRole(uint256 role) {
         // Retrieve the caller's AutID from the AutID contract
         uint256 autIDTokenId = autID.getAutIDByOwner(msg.sender);
 
         // Retrieve the caller's DAO membership data from the AutID contract
-        IAutID.DAOMember memory daoMember = autID.getMembershipData(msg.sender, daoExpander);
+        IAutID.DAOMember memory daoMember = autID.getMembershipData(msg.sender, address(nova));
 
         // Check if the caller is the owner of a valid AutID and has the required role in the specified DAO
         require(
             autIDTokenId != 0 && autIDTokenId != type(uint256).max && daoMember.isActive && daoMember.role == role,
-            "RoleBasedGovernance: Caller does not have the required role in the specified DAO"
+            "Voting: Caller does not have the required role in the specified DAO"
         );
 
         _;
@@ -48,13 +47,13 @@ contract RoleBasedGovernance {
     event VoteCast(uint256 proposalId, address voter, bool vote);
 
     //initialize the contract with the autid contract address and the daoexpander address
-    constructor(address autIDContract, address daoExpanderAddress) {
+    constructor(address autIDContract, address novaAddress) {
         //weights for votes of each role
         uint8[3] memory roleWeights = [10, 21, 18];
 
         // Initialize the AutID interface with the deployed contract address
         autID = IAutID(autIDContract);
-        daoExpander = daoExpanderAddress;
+        nova = INova(novaAddress);
 
         //set the role weights for the proposal
         for (uint256 i = 0; i < roleWeights.length; i++) {
@@ -68,7 +67,7 @@ contract RoleBasedGovernance {
         uint256 startTime,
         uint256 endTime
     ) external onlyMemberWithRole(1) {
-        require(startTime < endTime, "RoleBasedGovernance: Invalid proposal duration");
+        require(startTime < endTime, "Voting: Invalid proposal duration");
 
         uint256 proposalId = proposalCount + 1;
         proposals[proposalId] = Proposal({
@@ -88,26 +87,26 @@ contract RoleBasedGovernance {
     function vote(uint256 proposalId, bool voteValue) external onlyMemberWithRole(2) {
         Proposal storage proposal = proposals[proposalId];
 
-        require(block.timestamp >= proposal.startTime, "RoleBasedGovernance: Voting has not started yet");
-        require(block.timestamp <= proposal.endTime, "RoleBasedGovernance: Voting has ended");
-        require(!proposalVotes[proposalId][msg.sender], "RoleBasedGovernance: Member has already voted");
+        require(block.timestamp >= proposal.startTime, "Voting: Voting has not started yet");
+        require(block.timestamp <= proposal.endTime, "Voting: Voting has ended");
+        require(!proposalVotes[proposalId][msg.sender], "Voting: Member has already voted");
 
         proposalVotes[proposalId][msg.sender] = true;
 
+        // Retrieve the voter's role from AutID contract
+        IAutID.DAOMember memory daoMember = autID.getMembershipData(msg.sender, address(nova));
+        uint256 voterRole = daoMember.role;
+
         if (voteValue) {
-            proposal.yesVotes += proposalRoleWeights[0][memberRoles[msg.sender]];
+            proposal.yesVotes += proposalRoleWeights[0][voterRole];
         } else {
-            proposal.noVotes += proposalRoleWeights[0][memberRoles[msg.sender]];
+            proposal.noVotes += proposalRoleWeights[0][voterRole];
         }
 
         //emit event to track vote
         emit VoteCast(proposalId, msg.sender, voteValue);
     }
 
-    function setMemberRole(address member, uint256 role) external onlyMemberWithRole(1) {
-        memberRoles[member] = role;
-    }
-    
     //get proposal data for the specified proposal id
     function getProposal(uint256 proposalId)
         external
